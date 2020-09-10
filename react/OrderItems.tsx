@@ -10,8 +10,9 @@ import React, {
 import { useMutation } from 'react-apollo'
 import UpdateItems from 'vtex.checkout-resources/MutationUpdateItems'
 import AddToCart from 'vtex.checkout-resources/MutationAddToCart'
+import SetManualPrice from 'vtex.checkout-resources/MutationSetManualPrice'
 import { OrderForm, OrderQueue } from 'vtex.order-manager'
-import { Item } from 'vtex.checkout-graphql'
+import { Item, OrderForm } from 'vtex.checkout-graphql'
 
 import {
   LocalOrderTaskType,
@@ -38,6 +39,7 @@ interface Context {
   ) => void
   updateQuantity: (props: Partial<CatalogItem>) => void
   removeItem: (props: Partial<CatalogItem>) => void
+  setManualPrice: (price: number, itemIndex: number) => void
 }
 
 enum Totalizers {
@@ -126,6 +128,7 @@ const OrderItemsContext = createContext<Context>({
   addItem: noop,
   updateQuantity: noop,
   removeItem: noop,
+  setManualPrice: noop
 })
 
 interface Task {
@@ -271,6 +274,24 @@ const useAddItemsTask = (
   return addItemTask
 }
 
+const useSetManualPrice = () => {
+  const [mutateSetManualPrice] = useMutation<SetManualPrice>(SetManualPrice)
+
+  const setManualPriceTask = (price: number, itemIndex: number) => {
+    return {
+      execute: async () => {
+        const { data } = await mutateSetManualPrice({
+            variables: {manualPriceInput: { itemIndex, price}},
+          })
+
+        return data!.setManualPrice
+      }
+    }
+  }
+
+  return setManualPriceTask
+}
+
 const useUpdateItemsTask = (
   fakeUniqueIdMapRef: React.MutableRefObject<FakeUniqueIdMap>
 ) => {
@@ -402,6 +423,10 @@ interface UpdateItemsMutation {
   updateItems: OrderForm
 }
 
+interface SetManualPrice {
+  setManualPrice: OrderForm
+}
+
 export const OrderItemsProvider: FC = ({ children }) => {
   const { orderForm, setOrderForm } = useOrderForm()
 
@@ -410,6 +435,7 @@ export const OrderItemsProvider: FC = ({ children }) => {
   const enqueueTask = useEnqueueTask()
   const addItemsTask = useAddItemsTask(fakeUniqueIdMapRef)
   const updateItemsTask = useUpdateItemsTask(fakeUniqueIdMapRef)
+  const setManualPriceTask = useSetManualPrice()
 
   const orderFormItemsRef = useRef(orderForm.items)
 
@@ -570,15 +596,20 @@ export const OrderItemsProvider: FC = ({ children }) => {
     [enqueueTask, setOrderForm, updateItemsTask]
   )
 
+  const setManualPrice = (price: number, itemIndex: number) => {
+    enqueueTask(setManualPriceTask(price, itemIndex))
+  }
+
   const removeItem = useCallback(
     (props: Partial<Item>) => updateQuantity({ ...props, quantity: 0 }),
     [updateQuantity]
   )
 
-  const value = useMemo(() => ({ addItem, updateQuantity, removeItem }), [
+  const value = useMemo(() => ({ addItem, updateQuantity, removeItem, setManualPrice }), [
     addItem,
     updateQuantity,
     removeItem,
+    setManualPrice
   ])
 
   useEffect(() => {
